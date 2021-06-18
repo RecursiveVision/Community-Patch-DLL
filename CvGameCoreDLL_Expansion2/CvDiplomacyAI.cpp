@@ -8999,20 +8999,31 @@ void CvDiplomacyAI::DoUpdateWarStates()
 					eWarState = WAR_STATE_STALEMATE;
 			}
 
-			// Which of us has more city danger?
+			// Which of us has more city danger? Also consider the war score!
 			if (eWarState == NO_WAR_STATE_TYPE)
 			{
 				if (iDangerPercent < 100)
 				{
-					eWarState = WAR_STATE_DEFENSIVE;
+					if (WarScore >= 25)
+						eWarState = WAR_STATE_STALEMATE;
+					else
+						eWarState = WAR_STATE_DEFENSIVE;
 				}
 				else if (iDangerPercent == 100)
 				{
-					eWarState = WAR_STATE_STALEMATE;
+					if (WarScore <= -25)
+						eWarState = WAR_STATE_DEFENSIVE;
+					else if (WarScore >= 25)
+						eWarState = WAR_STATE_OFFENSIVE;
+					else
+						eWarState = WAR_STATE_STALEMATE;
 				}
 				else if (iDangerPercent > 100)
 				{
-					eWarState = WAR_STATE_OFFENSIVE;
+					if (WarScore <= -25)
+						eWarState = WAR_STATE_STALEMATE;
+					else
+						eWarState = WAR_STATE_OFFENSIVE;
 				}
 			}
 
@@ -9073,7 +9084,7 @@ void CvDiplomacyAI::DoUpdateWarStates()
 	}
 
 	// Finalize overall assessment
-	if (iStateAllWars < 0 || GetStateAllWars() == STATE_ALL_WARS_LOSING)
+	if (iStateAllWars < -1 || GetStateAllWars() == STATE_ALL_WARS_LOSING)
 	{
 		SetStateAllWars(STATE_ALL_WARS_LOSING);
 	}
@@ -9085,11 +9096,11 @@ void CvDiplomacyAI::DoUpdateWarStates()
 
 bool CvDiplomacyAI::CanSeeEnemyCity(CvCity* pCity) const
 {
-	if (pCity == NULL)
+	if (!pCity)
 		return false;
 
 	CvPlot* pCityPlot = pCity->plot();
-	if (pCityPlot == NULL)
+	if (!pCityPlot)
 		return false;
 
 	TeamTypes eMyTeam = GetTeam();
@@ -11322,16 +11333,17 @@ void CvDiplomacyAI::DoUpdatePeaceTreatyWillingness(bool bMyTurn)
 
 		if (iWarScore <= 0)
 		{
-			iPeaceScore += iWarScore / -10;
+			iPeaceScore += iWarScore / -2;
 			bProlong = false;
 		}
 		else if (GetPlayer()->GetPositiveWarScoreTourismMod() <= 0 || GET_PLAYER(GetHighestWarscorePlayer()).getTeam() != GET_PLAYER(*it).getTeam())
 		{
-			iPeaceScore += iWarScore / -10;
+			iPeaceScore += iWarScore / -5;
 			bProlong = false;
 		}
 
 		int iTooLongWarThreshold = bProlong ? 30 : 15;
+		int iDurationPenalty = iWarDuration - iTooLongWarThreshold;
 
 		// Lack of progress in war increases desire for peace (moreso if far away).
 		if (iWarDuration > iTooLongWarThreshold)
@@ -11339,16 +11351,16 @@ void CvDiplomacyAI::DoUpdatePeaceTreatyWillingness(bool bMyTurn)
 			switch (GetPlayer()->GetProximityToPlayer(*it))
 			{
 			case PLAYER_PROXIMITY_NEIGHBORS:
-				iPeaceScore += iWarDuration;
+				iPeaceScore += iDurationPenalty;
 				break;
 			case PLAYER_PROXIMITY_CLOSE:
-				iPeaceScore += (iWarDuration * 150) / 100;
+				iPeaceScore += (iDurationPenalty * 150) / 100;
 				break;
 			case PLAYER_PROXIMITY_FAR:
-				iPeaceScore += iWarDuration * 2;
+				iPeaceScore += iDurationPenalty * 2;
 				break;
 			case PLAYER_PROXIMITY_DISTANT:
-				iPeaceScore += iWarDuration * 3;
+				iPeaceScore += iDurationPenalty * 3;
 				break;
 			}
 		}
@@ -11462,7 +11474,7 @@ void CvDiplomacyAI::DoUpdatePeaceTreatyWillingness(bool bMyTurn)
 		}
 
 		// If we want to conquer them, let's hold out longer.
-		if (IsWantsToConquer(*it) || IsUntrustworthy(*it))
+		if (!bReadyForVassalage && IsWantsToConquer(*it))
 		{
 			iPeaceScore -= 10;
 		}
@@ -21230,16 +21242,11 @@ void CvDiplomacyAI::DoRelationshipPairing()
 		// Our master?
 		if (IsVassal(eLoopPlayer))
 		{
-			if (IsVoluntaryVassalage(eLoopPlayer) && GetVassalTreatmentLevel(eLoopPlayer) >= VASSAL_TREATMENT_DISAGREE)
-			{
+			if (GetVassalTreatmentLevel(eLoopPlayer) <= VASSAL_TREATMENT_DISAGREE)
 				SetStrategicTradePartner(eLoopPlayer, true);
-				continue;
-			}
-			else if (GetVassalTreatmentLevel(eLoopPlayer) == VASSAL_TREATMENT_CONTENT)
-			{
-				SetStrategicTradePartner(eLoopPlayer, true);
-				continue;
-			}
+			else
+				SetStrategicTradePartner(eLoopPlayer, false);
+			continue;
 		}
 
 		if (GetVictoryDisputeLevel(eLoopPlayer) == DISPUTE_LEVEL_FIERCE)
